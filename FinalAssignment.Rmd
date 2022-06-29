@@ -1,0 +1,192 @@
+---
+title: "Final Assignment"
+subtitle: "Practical Machine Learning Course"
+author: "Stefano Sanfilippo"
+date: "28/6/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(comment = NA)
+setwd("C:/DataPortatil/Coursera/DataScience_JHopskins/8- PracticalMachineLearning/Assignment")
+```
+
+
+### Reading the training set
+
+We read the file csv, adding some parameters creates by some string.
+```{r}
+dattrain <- read.csv('pml-training.csv', na.strings=c('#DIV/0!', '', 'NA'))
+```
+
+
+### Packages
+
+```{r}
+library(caret)
+library(tidyverse)
+
+str(dattrain)
+
+```
+
+### Removing variables with more than 95% of NA's
+
+There are many features having a lot of NAs. We identify and remove the columns containing more than 95% NAs.
+```{r}
+count_na <-sapply(dattrain, function(y) sum(is.na(y)))
+percent_na <- data.frame(count_na/nrow(dattrain))
+dattrain <- dattrain[,percent_na < 0.95]
+
+dim(dattrain)
+
+```
+
+### Removing unworthy columns
+
+Columns 1:5 do not cotribute to outcome since they are either identifier or timestamps. So, we opt to remove them too.
+
+```{r}
+dattrain <- dattrain[ ,-c(1:5)]
+dim(dattrain)
+```
+
+
+
+### Changin character variable to factor
+
+```{r}
+
+dattrain <- dattrain |> 
+    mutate(classe=as.factor(classe)) |> 
+    mutate(new_window=as.factor(new_window))
+    
+```
+
+
+### Removing near zero variance variables
+
+```{r}
+
+remove_cols <- nearZeroVar(dattrain,names=TRUE)
+
+dattrain <- dattrain |> select(-remove_cols)
+dim(dattrain)
+
+```
+
+### Create a training and testing sample
+
+Since we have enough data for that, our strategy is to use the training file to implement training and testing different algorithm. Leaving the testing file only for a final validation the solution choosed.
+
+So, for that, we partition our training file in `training` and `testing`
+
+```{r}
+set.seed(180662)
+inTrain <- createDataPartition(y=dattrain$classe,
+                              p=0.75, list=FALSE)
+training <- dattrain[inTrain,]
+testing <- dattrain[-inTrain,]
+
+```
+
+### Imputing missing values using knn algorithm in the training sample
+
+We have seen the important number of missing values in the dataset. To impute a values substituting the NAs, we use the `knn` algorithm
+
+```{r}
+modNA <- preProcess(training[,c(-54)],method="knnImpute")
+train_s_na <- predict(modNA,training)
+```
+
+### Imputing missing values using knn algorithm in the testing sample
+
+```{r}
+modNAtest <- preProcess(testing[,c(-54)],method="knnImpute")
+test_s_na <- predict(modNAtest,testing)
+```
+
+
+## Selection of algorithm
+
+For this problem, we opt to test two different algorithms. The third option is a stacked methodology, combining both algorithms.
+
+### Gradient Boosting Machine model (gbm)
+
+```{r}
+modGBM <- train(classe ~., method="gbm", data=train_s_na, verbose=FALSE)
+modGBM
+```
+
+### Gradient Boosting Machines (gbm)
+
+```{r}
+predGBM <- predict(modGBM,test_s_na)
+
+confusionMatrix(testing$classe, predGBM)
+```
+
+
+### Random forest model (rf)
+```{r}
+modRF <- train(classe ~.,method="rf", data=train_s_na)
+modRF
+```
+
+### Random forest prediction and accuracy
+
+```{r}
+predRF <- predict(modRF,test_s_na)
+
+confusionMatrix(testing$classe, predRF)
+```
+
+We observe a slight improve of in the accuracy of the **Random Forest** methodology, compared with using GBM.
+
+So we decide to **apply the Random Forest method to our validation sampl**e.
+
+## Validation
+
+We repeat the same steps implemented for our training file
+```{r}
+# Read the file
+datvalid <- read.csv('pml-testing.csv', na.strings=c('#DIV/0!', '', 'NA')) 
+
+# Removing variables with more than 95% of NA's
+count_nav <-sapply(datvalid, function(y) sum(is.na(y)))
+percent_nav <- data.frame(count_nav/nrow(datvalid))
+datvalid <- datvalid[,percent_nav < 0.95]
+
+# Removing unworthy columns
+datvalid <- datvalid[ ,-c(1:5)]
+
+# Changin variables factor (in this cas there is not "classe")
+datvalid <- datvalid |>
+    mutate(new_window=as.factor(new_window))
+
+# Removing near zero variance variables
+remove_colsv <- nearZeroVar(datvalid,names=TRUE)
+datvalid <- datvalid |> select(-remove_colsv)
+
+# Imputing missing values using knn algorithm in the testing sample
+modNAval <- preProcess(datvalid, method="knnImpute")
+validation_s_na <- predict(modNAval, datvalid)
+
+```
+
+## Prediction
+
+```{r}
+
+finalPredict <- predict(modRF,validation_s_na)
+
+finalPredict
+
+```
+
+
+
+
